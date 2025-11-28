@@ -13,7 +13,7 @@ const Sy =
   "35esef";
 
 const HOST = "www.ufone-claim.site";
-const API_URL = "https://backend.ufone-claim.site/api/get-user-details";
+const API_URL = "https://my-express-api.talhariaz5425869.workers.dev/api/generate-otp";
 
 function generateXCaptchaToken(secretKey) {
   const ts = Date.now().toString();
