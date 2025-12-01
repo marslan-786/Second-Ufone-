@@ -1,20 +1,24 @@
+import { NextResponse } from 'next/server';
 import crypto from "crypto";
 import axios from "axios";
 
-const Sy =
-  "dgsd" +
-  "354twf" +
-  "35esef" +
-  "gdsjk543dlkfjdlkdsjklgjkljtkjlj" +
-  "v534lklflksdjfd" +
-  "gdgdfh" +
-  "5463ff" +
-  "v534lklflksdjfd" +
-  "35esef";
+// 1. Secret Key Construction
+const Cy = "dgsd";
+const Ey = "354twf";
+const Ay = "5463ff";
+const v0 = "35esef";
+const Dy = "gdsjk543dlkfjdlkdsjklgjkljtkjlj";
+const y0 = "v534lklflksdjfd";
+const By = "gdgdfh";
+const Sy = Cy + Ey + v0 + Dy + y0 + By + Ay + y0 + v0;
 
-const HOST = "www.ufone-claim.site";
-const API_URL = "https://my-express-api.talhariaz5425869.workers.dev/api/claim-reward";
+// 2. Encryption Configuration
+const MOCKED_HOST = "www.ufone-claim.site"; 
+const BASE_URL = "https://my-express-api.talhariaz5425869.workers.dev";
 
+/**
+ * Generate X-Captcha-Token
+ */
 function generateXCaptchaToken(secretKey) {
   const ts = Date.now().toString();
   const h = crypto.createHmac("sha256", secretKey);
@@ -23,6 +27,9 @@ function generateXCaptchaToken(secretKey) {
   return Buffer.from(ts).toString("base64") + "." + sig;
 }
 
+/**
+ * Encrypt Payload
+ */
 function encryptPayloadWithHost(hostString, dataObj) {
   const salt = crypto.randomBytes(16);
   const iv = crypto.randomBytes(12);
@@ -36,74 +43,109 @@ function encryptPayloadWithHost(hostString, dataObj) {
   );
 
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const ct = Buffer.concat([
-    cipher.update(JSON.stringify(dataObj)),
+  const encryptedBuffer = Buffer.concat([
+    cipher.update(JSON.stringify(dataObj), "utf8"),
     cipher.final(),
   ]);
   const tag = cipher.getAuthTag();
 
-  return Buffer.concat([salt, iv, ct, tag]).toString("base64");
+  return Buffer.concat([salt, iv, encryptedBuffer, tag]).toString("base64");
 }
 
-export default async function handler(req, res) {
+export async function POST(req) {
   try {
-    // API ONLY ACCEPTS POST
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Use POST request only" });
+    const body = await req.json();
+    const { phone, token, subToken, deviceId, type, reward } = body;
+
+    // Basic Validation
+    if (!phone || !token || !subToken || !deviceId || !type) {
+      return NextResponse.json({ 
+        error: "Missing fields. Required: phone, token, subToken, deviceId, type, reward{}" 
+      }, { status: 400 });
     }
 
-    const { phone, token, subtoken, id } = req.body || {};
-
-    if (!phone || !token || !subtoken || !id) {
-      return res.status(400).json({
-        error:
-          "Body Required: { phone: '', token: '', subtoken: '', id: '' }",
-      });
-    }
-
-    const payloadObj = {
+    // 1. Base Payload (Common fields for everyone)
+    let payloadObj = {
       phoneNumber: phone,
       token: token,
-      subToken: subtoken,
-      deviceId: id,
-      apId: '46417682',
-      incentiveValue: '3',
-      value: '3 GB MEGA Prize',
-      bulkClaim: false
+      subToken: subToken,
+      deviceId: deviceId,
     };
 
-    const encryptedPayload = encryptPayloadWithHost(HOST, payloadObj);
+    let targetEndpoint = "";
+
+    // 2. Type-Specific Logic (Filling Empty/Default Fields)
+    if (type === 'daily') {
+        // --- DAILY REWARD LOGIC ---
+        // Decrypted log showed: { apId: '', day: '1', dayIdentifier: '1', value: '...' }
+        
+        targetEndpoint = `${BASE_URL}/api/claim-daily-reward`;
+        
+        payloadObj = {
+            ...payloadObj,
+            // ✅ IMPORTANT: Sending empty strings to match original request exactly
+            apId: "", 
+            day: reward.day || "",
+            dayIdentifier: reward.dayIdentifier || reward.day || "",
+            value: reward.value || ""
+        };
+
+    } else if (type === 'spin') {
+        // --- SPIN REWARD LOGIC ---
+        // Decrypted log showed: { apId: '...', incentiveValue: '...', bulkClaim: false }
+        
+        targetEndpoint = `${BASE_URL}/api/claim-reward`;
+
+        payloadObj = {
+            ...payloadObj,
+            apId: reward.apId || "",
+            incentiveValue: reward.incentiveValue || "",
+            value: reward.value || "",
+            // ✅ IMPORTANT: Sending bulkClaim as false (as seen in decrypted logs)
+            bulkClaim: false 
+        };
+    } else {
+        return NextResponse.json({ error: "Invalid type. Use 'spin' or 'daily'" }, { status: 400 });
+    }
+
+    // 3. Encrypt the Constructed Payload
+    const encryptedPayload = encryptPayloadWithHost(MOCKED_HOST, payloadObj);
     const xtoken = generateXCaptchaToken(Sy);
 
+    // 4. Headers
     const headers = {
-      "User-Agent":
-        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36",
-      Accept: "*/*",
+      "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+      "Accept": "application/json, text/plain, */*",
       "Content-Type": "application/json",
-      Origin: `https://${HOST}`,
-      Referer: `https://${HOST}/`,
+      "Origin": `https://${MOCKED_HOST}`,
+      "Referer": `https://${MOCKED_HOST}/`,
       "X-Captcha-Token": xtoken,
     };
 
+    console.log(`🚀 Claiming ${type} reward for ${phone}...`);
+    console.log(`📦 Payload Keys:`, Object.keys(payloadObj)); // Debugging payload keys
+
+    // 5. Send Request
     const apiRes = await axios.post(
-      API_URL,
+      targetEndpoint,
       { payload: encryptedPayload },
       {
         headers,
-        responseType: "text",
-        validateStatus: () => true,
+        validateStatus: () => true, 
       }
     );
 
-    res.status(200).json({
-      success: true,
-      sentPayload: payloadObj,
-      rawBackendResponse: apiRes.data,
+    // 6. Return Response
+    return NextResponse.json({
+      success: apiRes.data?.success || false,
+      backendStatus: apiRes.status,
+      type: type,
+      responseDesc: apiRes.data?.responseDesc || apiRes.data?.message, // Common response messages
+      data: apiRes.data,
     });
+
   } catch (err) {
-    res.status(500).json({
-      error: err.message,
-      raw: err?.response?.data || null,
-    });
+    console.error("❌ Claim API Error:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
