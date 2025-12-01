@@ -48,11 +48,11 @@ function encryptPayloadWithHost(hostString, dataObj) {
 export default async function handler(req, res) {
   try {
     // API ONLY ACCEPTS POST
-    if (req.method !== "POST") {
+    if (req.method !== "GET") {
       return res.status(405).json({ error: "Use POST request only" });
     }
 
-    const { phone, id } = req.body || {};
+    const { phone, id } = req.query || {};
 
     if (!phone || !id) {
       return res.status(400).json({
