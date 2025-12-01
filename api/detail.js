@@ -12,7 +12,7 @@ const Sy =
   "v534lklflksdjfd" +
   "35esef";
 
-const HOST = "ufone-claim.site";
+const HOST = "www.ufone-claim.site";
 const API_URL = "https://backend.ufone-claim.site/api/get-user-details";
 
 function generateXCaptchaToken(secretKey) {
